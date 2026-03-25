@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
@@ -20,6 +21,9 @@ import { BloodUnitsModule } from './blood-units/blood-units.module';
 import { BullModule } from '@nestjs/bullmq';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './auth/guards/permissions.guard';
+import { ScheduleModule } from '@nestjs/schedule';
+import { UserActivityModule } from './user-activity/user-activity.module';
+import { ActivityLoggingInterceptor } from './user-activity/interceptors/activity-logging.interceptor';
 import { RedisModule } from './redis/redis.module';
 import { REDIS_CLIENT } from './redis/redis.constants';
 import { throttleGetTracker } from './throttler/throttle-tracker.util';
@@ -30,6 +34,7 @@ import { throttleGetTracker } from './throttler/throttle-tracker.util';
       isGlobal: true,
       envFilePath: '.env',
     }),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -88,6 +93,7 @@ import { throttleGetTracker } from './throttler/throttle-tracker.util';
       }),
     }),
     NotificationsModule,
+    UserActivityModule,
   ],
   controllers: [AppController],
   providers: [
@@ -100,6 +106,7 @@ import { throttleGetTracker } from './throttler/throttle-tracker.util';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     /** Permission enforcement applied globally; use @RequirePermissions() to specify */
     { provide: APP_GUARD, useClass: PermissionsGuard },
+    { provide: APP_INTERCEPTOR, useClass: ActivityLoggingInterceptor },
   ],
 })
 export class AppModule {}
