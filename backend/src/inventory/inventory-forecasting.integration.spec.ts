@@ -15,7 +15,6 @@ import {
 
 import { OrderEntity } from '../orders/entities/order.entity';
 import { OrderStatus } from '../orders/enums/order-status.enum';
-import { UserEntity } from '../users/entities/user.entity';
 
 import { InventoryEntity } from './entities/inventory.entity';
 import { InventoryForecastingService } from './inventory-forecasting.service';
@@ -56,13 +55,14 @@ describe('InventoryForecasting Integration (SQLite)', () => {
   let orderRepo: Repository<TestOrderEntity>;
   let inventoryRepo: Repository<InventoryEntity>;
 
+  const configValues: Record<string, number> = {
+    INVENTORY_FORECAST_THRESHOLD_DAYS: 3,
+    INVENTORY_FORECAST_HISTORY_DAYS: 30,
+  };
+
   const mockConfigService = {
-    get: jest.fn((key: string, defaultValue?: any) => {
-      const config = {
-        INVENTORY_FORECAST_THRESHOLD_DAYS: 3,
-        INVENTORY_FORECAST_HISTORY_DAYS: 30,
-      };
-      return config[key] || defaultValue;
+    get: jest.fn((key: string, defaultValue?: number) => {
+      return key in configValues ? configValues[key] : defaultValue;
     }),
   };
 
@@ -80,14 +80,10 @@ describe('InventoryForecasting Integration (SQLite)', () => {
         TypeOrmModule.forRoot({
           type: 'sqlite',
           database: ':memory:',
-          entities: [TestOrderEntity, InventoryEntity, UserEntity],
+          entities: [TestOrderEntity, InventoryEntity],
           synchronize: true,
         }),
-        TypeOrmModule.forFeature([
-          TestOrderEntity,
-          InventoryEntity,
-          UserEntity,
-        ]),
+        TypeOrmModule.forFeature([TestOrderEntity, InventoryEntity]),
       ],
       providers: [
         InventoryForecastingService,

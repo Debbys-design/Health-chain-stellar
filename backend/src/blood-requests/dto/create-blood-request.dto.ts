@@ -2,12 +2,15 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsDateString,
+  IsEnum,
   IsOptional,
   IsString,
   MaxLength,
   MinLength,
   ValidateNested,
 } from 'class-validator';
+
+import { UrgencyLevel } from '../enums/urgency-level.enum';
 
 import { CreateRequestItemDto } from './create-request-item.dto';
 
@@ -21,6 +24,10 @@ export class CreateBloodRequestDto {
   @IsDateString()
   requiredBy: string;
 
+  @IsOptional()
+  @IsEnum(UrgencyLevel)
+  urgencyLevel?: UrgencyLevel;
+
   @ValidateNested({ each: true })
   @Type(() => CreateRequestItemDto)
   @ArrayMinSize(1)
@@ -30,6 +37,21 @@ export class CreateBloodRequestDto {
   @IsString()
   @MaxLength(500)
   deliveryAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  deliveryContactName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  deliveryContactPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  deliveryInstructions?: string;
 
   @IsOptional()
   @IsString()

@@ -1,62 +1,18 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  UpdateDateColumn,
+  Entity,
   Index,
-} from 'typeorm';
-
-@Entity('blood_units')
-@Index(['unitNumber'], { unique: true })
-@Index(['bloodType', 'bankId'])
-export class BloodUnitEntity {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
-  @Column({ type: 'varchar', length: 80, unique: true })
-  unitNumber: string;
-
-  @Column({ type: 'bigint', nullable: true })
-  blockchainUnitId?: number;
-
-  @Column({ type: 'varchar', length: 255 })
-  blockchainTransactionHash: string;
-
-  @Column({ type: 'varchar', length: 5 })
-  bloodType: string;
-
-  @Column({ type: 'int' })
-  quantityMl: number;
-
-  @Column({ type: 'varchar', length: 100, nullable: true })
-  donorId?: string;
-
-  @Column({ type: 'varchar', length: 70 })
-  bankId: string;
-
-  @Column({ type: 'timestamp' })
-  expirationDate: Date;
-
-  @Column({ type: 'varchar', length: 80, nullable: true })
-  registeredBy?: string;
-
-  @Column({ type: 'text' })
-  barcodeData: string;
-
-  @Column({ type: 'jsonb', nullable: true })
-  metadata?: Record<string, unknown>;
-
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
   OneToMany,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
   BaseEntity,
 } from 'typeorm';
-import { BloodType } from '../enums/blood-type.enum';
-import { BloodStatus } from '../enums/blood-status.enum';
+
 import { BloodComponent } from '../enums/blood-component.enum';
+import { BloodStatus } from '../enums/blood-status.enum';
+import { BloodType } from '../enums/blood-type.enum';
+
 import { BloodStatusHistory } from './blood-status-history.entity';
 
 @Entity('blood_units')
@@ -106,7 +62,11 @@ export class BloodUnit extends BaseEntity {
   @Column({ name: 'test_results', type: 'jsonb', nullable: true })
   testResults: Record<string, unknown> | null;
 
-  @Column({ name: 'storage_temperature_celsius', type: 'float', nullable: true })
+  @Column({
+    name: 'storage_temperature_celsius',
+    type: 'float',
+    nullable: true,
+  })
   storageTemperatureCelsius: number | null;
 
   @Column({ name: 'storage_location', type: 'varchar', nullable: true })
@@ -131,4 +91,15 @@ export class BloodUnit extends BaseEntity {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+}
+
+export class BloodUnitEntity extends BloodUnit {
+  unitNumber: string;
+  bankId: string;
+  quantityMl: number;
+  expirationDate: Date;
+  blockchainTransactionHash: string;
+  barcodeData: string;
+  registeredBy?: string;
+  metadata?: Record<string, unknown>;
 }

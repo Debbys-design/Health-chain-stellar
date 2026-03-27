@@ -23,9 +23,11 @@ import { EmailProvider } from '../notifications/providers/email.provider';
 import { CreateBloodRequestDto } from './dto/create-blood-request.dto';
 import { BloodRequestItemEntity } from './entities/blood-request-item.entity';
 import { BloodRequestEntity } from './entities/blood-request.entity';
-import { BloodRequestStatus } from './enums/blood-request-status.enum';
+import { RequestStatusHistoryEntity } from './entities/request-status-history.entity';
+import { RequestStatus } from './enums/blood-request-status.enum';
+import { UrgencyLevel } from './enums/urgency-level.enum';
 
-type RequestUser = { id: string; role: string; email: string };
+type RequestUser = { id: string; role: UserRole; email: string };
 
 @Injectable()
 export class BloodRequestsService {
@@ -36,6 +38,8 @@ export class BloodRequestsService {
     private readonly bloodRequestRepo: Repository<BloodRequestEntity>,
     @InjectRepository(BloodRequestItemEntity)
     private readonly bloodRequestItemRepo: Repository<BloodRequestItemEntity>,
+    @InjectRepository(RequestStatusHistoryEntity)
+    private readonly requestStatusHistoryRepo: Repository<RequestStatusHistoryEntity>,
     private readonly inventoryService: InventoryService,
     private readonly sorobanService: SorobanService,
     private readonly emailProvider: EmailProvider,
@@ -96,12 +100,27 @@ export class BloodRequestsService {
     }
   }
 
+  private calculateSlaResponseDueAt(urgencyLevel: UrgencyLevel): Date {
+    const now = new Date();
+    const urgencyToHours: Record<UrgencyLevel, number> = {
+      [UrgencyLevel.CRITICAL]: 1,
+      [UrgencyLevel.URGENT]: 4,
+      [UrgencyLevel.ROUTINE]: 24,
+      [UrgencyLevel.SCHEDULED]: 72,
+    };
+    const deadline = new Date(now);
+    deadline.setHours(deadline.getHours() + urgencyToHours[urgencyLevel]);
+    return deadline;
+  }
+
   async create(
     dto: CreateBloodRequestDto,
     user: RequestUser,
   ): Promise<{ message: string; data: BloodRequestEntity }> {
     this.assertHospitalAuthorization(user, dto.hospitalId);
     const requiredBy = this.assertRequiredByFuture(dto.requiredBy);
+    const urgencyLevel = dto.urgencyLevel ?? UrgencyLevel.ROUTINE;
+    const slaResponseDueAt = this.calculateSlaResponseDueAt(urgencyLevel);
 
     const requestNumber = await this.allocateRequestNumber();
 
@@ -183,7 +202,7 @@ export class BloodRequestsService {
 
         const adminAlertHandler = {
           action: CompensationAction.NOTIFY_ADMIN,
-          execute: async () => {
+          execute: () => {
             this.logger.error(`[ADMIN ALERT] Blood request on-chain failure`, {
               requestNumber,
               hospitalId: dto.hospitalId,
@@ -194,7 +213,7 @@ export class BloodRequestsService {
 
         const flagHandler = {
           action: CompensationAction.FLAG_FOR_REVIEW,
-          execute: async () => true,
+          execute: () => true,
         };
 
         const result = await this.compensationService.compensate(
@@ -212,10 +231,20 @@ export class BloodRequestsService {
         requestNumber,
         hospitalId: dto.hospitalId,
         requiredBy,
+        urgencyLevel,
         deliveryAddress: dto.deliveryAddress?.trim() ?? null,
+        deliveryContactName: dto.deliveryContactName?.trim() ?? null,
+        deliveryContactPhone: dto.deliveryContactPhone?.trim() ?? null,
+        deliveryInstructions: dto.deliveryInstructions?.trim() ?? null,
         notes: dto.notes?.trim() ?? null,
-        status: BloodRequestStatus.PENDING,
+        status: RequestStatus.PENDING,
+        statusUpdatedAt: new Date(),
+        slaResponseDueAt,
+        slaFulfillmentDueAt: requiredBy,
+        blockchainRequestId: requestNumber,
+        blockchainNetwork: 'stellar',
         blockchainTxHash: transactionHash,
+        blockchainConfirmedAt: new Date(),
         createdByUserId: user.id,
         items: dto.items.map((i) =>
           this.bloodRequestItemRepo.create({
@@ -224,6 +253,14 @@ export class BloodRequestsService {
             quantity: i.quantity,
           }),
         ),
+        statusHistory: [
+          this.requestStatusHistoryRepo.create({
+            previousStatus: null,
+            newStatus: RequestStatus.PENDING,
+            reason: 'Request created',
+            changedByUserId: user.id,
+          }),
+        ],
       });
 
       const saved = await this.bloodRequestRepo.save(parent);

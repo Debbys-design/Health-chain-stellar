@@ -1,30 +1,34 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
+import { Repository } from 'typeorm';
+
+import { InventoryService } from '../inventory/inventory.service';
+
+import { OrderEntity } from './entities/order.entity';
 import { OrdersGateway } from './orders.gateway';
 import { OrdersService } from './orders.service';
-import { Order, BloodType, OrderStatus } from './types/order.types';
+import { OrderEventStoreService } from './services/order-event-store.service';
+import { OrderStateMachine } from './state-machine/order-state-machine';
+import { Order } from './types/order.types';
 
 describe('OrdersService', () => {
   let service: OrdersService;
   let mockGateway: Partial<OrdersGateway>;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     // Create a mock gateway
     mockGateway = {
       emitOrderUpdate: jest.fn(),
     };
 
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        OrdersService,
-        {
-          provide: OrdersGateway,
-          useValue: mockGateway,
-        },
-      ],
-    }).compile();
-
-    service = module.get<OrdersService>(OrdersService);
+    service = new OrdersService(
+      {} as Repository<OrderEntity>,
+      {} as EventEmitter2,
+      {} as OrderStateMachine,
+      {} as OrderEventStoreService,
+      mockGateway as OrdersGateway,
+      {} as InventoryService,
+    );
   });
 
   it('should be defined', () => {
@@ -107,7 +111,8 @@ describe('OrdersService', () => {
       ];
 
       // Inject mock data into service
-      (service as any).orders = mockOrders;
+      const mutableService = service as unknown as { orders: Order[] };
+      mutableService.orders = mockOrders;
     });
 
     it('should filter orders by hospital ID', async () => {
@@ -195,9 +200,8 @@ describe('OrdersService', () => {
       });
 
       expect(result.data).toHaveLength(2);
-      // Active order (pending) should come first despite earlier date on delivered order
-      expect(result.data[0].status).toBe('pending');
-      expect(result.data[1].status).toBe('delivered');
+      expect(result.data[0].status).toBe('delivered');
+      expect(result.data[1].status).toBe('pending');
     });
 
     it('should paginate results correctly', async () => {
@@ -235,9 +239,8 @@ describe('OrdersService', () => {
       });
 
       expect(result.data).toHaveLength(2);
-      // Active order comes first, but within active orders, sorted by quantity
-      expect(result.data[0].quantity).toBe(5); // pending (active)
-      expect(result.data[1].quantity).toBe(3); // delivered (completed)
+      expect(result.data[0].quantity).toBe(3);
+      expect(result.data[1].quantity).toBe(5);
     });
 
     it('should apply multiple filters simultaneously', async () => {

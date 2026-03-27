@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { UserRole } from '../auth/enums/user-role.enum';
 import { SorobanService } from '../blockchain/services/soroban.service';
 import { CompensationService } from '../common/compensation/compensation.service';
 import {
@@ -11,18 +12,41 @@ import { InventoryService } from '../inventory/inventory.service';
 import { EmailProvider } from '../notifications/providers/email.provider';
 
 import { BloodRequestsService } from './blood-requests.service';
+import { CreateBloodRequestDto } from './dto/create-blood-request.dto';
 import { BloodRequestItemEntity } from './entities/blood-request-item.entity';
 import { BloodRequestEntity } from './entities/blood-request.entity';
+import { RequestStatusHistoryEntity } from './entities/request-status-history.entity';
 import { BloodRequestStatus } from './enums/blood-request-status.enum';
 
 const mockBloodRequestRepo = {
   exist: jest.fn().mockResolvedValue(false),
-  create: jest.fn().mockImplementation((dto) => dto),
-  save: jest.fn().mockImplementation((e) => Promise.resolve({ ...e, id: 'req-uuid', items: e.items ?? [] })),
+  create: jest
+    .fn()
+    .mockImplementation((dto: Partial<BloodRequestEntity>) => dto),
+  save: jest.fn().mockImplementation(
+    (
+      entity: Partial<BloodRequestEntity> & {
+        items?: BloodRequestItemEntity[];
+      },
+    ) =>
+      Promise.resolve({
+        ...entity,
+        id: 'req-uuid',
+        items: entity.items ?? [],
+      }),
+  ),
 };
 
 const mockBloodRequestItemRepo = {
-  create: jest.fn().mockImplementation((dto) => dto),
+  create: jest
+    .fn()
+    .mockImplementation((dto: Partial<BloodRequestItemEntity>) => dto),
+};
+
+const mockRequestStatusHistoryRepo = {
+  create: jest
+    .fn()
+    .mockImplementation((dto: Partial<RequestStatusHistoryEntity>) => dto),
 };
 
 const mockInventoryService = {
@@ -31,7 +55,9 @@ const mockInventoryService = {
 };
 
 const mockSorobanService = {
-  submitTransactionAndWait: jest.fn().mockResolvedValue({ transactionHash: 'tx-hash-abc' }),
+  submitTransactionAndWait: jest
+    .fn()
+    .mockResolvedValue({ transactionHash: 'tx-hash-abc' }),
 };
 
 const mockEmailProvider = {
@@ -40,21 +66,27 @@ const mockEmailProvider = {
 
 const mockCompensationService = {
   compensate: jest.fn().mockResolvedValue({
-    applied: [CompensationAction.REVERT_INVENTORY, CompensationAction.NOTIFY_USER],
+    applied: [
+      CompensationAction.REVERT_INVENTORY,
+      CompensationAction.NOTIFY_USER,
+    ],
     failed: [],
     failureRecordId: 'record-uuid',
   }),
 };
 
-const validDto = {
+const validDto: CreateBloodRequestDto = {
   hospitalId: 'hosp-1',
   requiredBy: new Date(Date.now() + 86400000).toISOString(),
   deliveryAddress: '123 Main St',
-  notes: null,
   items: [{ bloodBankId: 'bank-1', bloodType: 'A+', quantity: 2 }],
 };
 
-const adminUser = { id: 'hosp-1', role: 'admin', email: 'admin@test.com' };
+const adminUser = {
+  id: 'hosp-1',
+  role: UserRole.ADMIN,
+  email: 'admin@test.com',
+};
 
 describe('BloodRequestsService', () => {
   let service: BloodRequestsService;
@@ -64,8 +96,18 @@ describe('BloodRequestsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BloodRequestsService,
-        { provide: getRepositoryToken(BloodRequestEntity), useValue: mockBloodRequestRepo },
-        { provide: getRepositoryToken(BloodRequestItemEntity), useValue: mockBloodRequestItemRepo },
+        {
+          provide: getRepositoryToken(BloodRequestEntity),
+          useValue: mockBloodRequestRepo,
+        },
+        {
+          provide: getRepositoryToken(BloodRequestItemEntity),
+          useValue: mockBloodRequestItemRepo,
+        },
+        {
+          provide: getRepositoryToken(RequestStatusHistoryEntity),
+          useValue: mockRequestStatusHistoryRepo,
+        },
         { provide: InventoryService, useValue: mockInventoryService },
         { provide: SorobanService, useValue: mockSorobanService },
         { provide: EmailProvider, useValue: mockEmailProvider },
@@ -78,9 +120,13 @@ describe('BloodRequestsService', () => {
 
   describe('create — happy path', () => {
     it('reserves inventory, submits chain tx, saves entity, sends email', async () => {
-      const result = await service.create(validDto as any, adminUser);
+      const result = await service.create(validDto, adminUser);
 
-      expect(mockInventoryService.reserveStockOrThrow).toHaveBeenCalledWith('bank-1', 'A+', 2);
+      expect(mockInventoryService.reserveStockOrThrow).toHaveBeenCalledWith(
+        'bank-1',
+        'A+',
+        2,
+      );
       expect(mockSorobanService.submitTransactionAndWait).toHaveBeenCalledWith(
         expect.objectContaining({ contractMethod: 'create_blood_request' }),
       );
@@ -99,19 +145,20 @@ describe('BloodRequestsService', () => {
     });
 
     it('throws BloodRequestIrrecoverableError', async () => {
-      await expect(service.create(validDto as any, adminUser)).rejects.toBeInstanceOf(
+      await expect(service.create(validDto, adminUser)).rejects.toBeInstanceOf(
         BloodRequestIrrecoverableError,
       );
     });
 
     it('calls compensate with REVERT_INVENTORY and NOTIFY_USER handlers', async () => {
-      await expect(service.create(validDto as any, adminUser)).rejects.toThrow();
+      await expect(service.create(validDto, adminUser)).rejects.toThrow();
 
       expect(mockCompensationService.compensate).toHaveBeenCalledTimes(1);
-      const [error, handlers] = mockCompensationService.compensate.mock.calls[0];
+      const [error, handlers] = mockCompensationService.compensate.mock
+        .calls[0] as [unknown, Array<{ action: CompensationAction }>];
 
       expect(error).toBeInstanceOf(BloodRequestIrrecoverableError);
-      const actions = handlers.map((h: any) => h.action);
+      const actions = handlers.map((handler) => handler.action);
       expect(actions).toContain(CompensationAction.REVERT_INVENTORY);
       expect(actions).toContain(CompensationAction.NOTIFY_USER);
       expect(actions).toContain(CompensationAction.NOTIFY_ADMIN);
@@ -119,18 +166,22 @@ describe('BloodRequestsService', () => {
     });
 
     it('does NOT double-release inventory (compensation already handled it)', async () => {
-      await expect(service.create(validDto as any, adminUser)).rejects.toThrow();
+      await expect(service.create(validDto, adminUser)).rejects.toThrow();
 
       // releaseStockByBankAndType should NOT be called directly by the outer catch
-      expect(mockInventoryService.releaseStockByBankAndType).not.toHaveBeenCalled();
+      expect(
+        mockInventoryService.releaseStockByBankAndType,
+      ).not.toHaveBeenCalled();
     });
 
     it('attaches failureRecordId to error context', async () => {
       let caughtError: BloodRequestIrrecoverableError | undefined;
       try {
-        await service.create(validDto as any, adminUser);
+        await service.create(validDto, adminUser);
       } catch (e) {
-        caughtError = e as BloodRequestIrrecoverableError;
+        if (e instanceof BloodRequestIrrecoverableError) {
+          caughtError = e;
+        }
       }
 
       expect(caughtError?.context['failureRecordId']).toBe('record-uuid');
@@ -152,10 +203,14 @@ describe('BloodRequestsService', () => {
         ],
       };
 
-      await expect(service.create(dtoWithTwo as any, adminUser)).rejects.toThrow();
+      await expect(
+        service.create(dtoWithTwo as CreateBloodRequestDto, adminUser),
+      ).rejects.toThrow();
 
       // The outer catch should release the first reservation
-      expect(mockInventoryService.releaseStockByBankAndType).toHaveBeenCalledWith('bank-1', 'A+', 2);
+      expect(
+        mockInventoryService.releaseStockByBankAndType,
+      ).toHaveBeenCalledWith('bank-1', 'A+', 2);
     });
   });
 });
