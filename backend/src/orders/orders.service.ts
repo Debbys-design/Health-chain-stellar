@@ -26,6 +26,11 @@ import { InventoryService } from '../inventory/inventory.service';
 
 import { OrderQueryParamsDto } from './dto/order-query-params.dto';
 import { OrdersResponseDto } from './dto/orders-response.dto';
+import { RaiseDisputeDto } from './dto/raise-dispute.dto';
+import {
+  ResolveDisputeDto,
+  DisputeResolution,
+} from './dto/resolve-dispute.dto';
 import { UpdateRequestStatusDto } from './dto/update-request-status.dto';
 import { OrderEventEntity } from './entities/order-event.entity';
 import { OrderEntity } from './entities/order.entity';
