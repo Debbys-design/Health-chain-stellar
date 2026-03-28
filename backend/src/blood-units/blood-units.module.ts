@@ -16,6 +16,9 @@ import { QrVerificationService } from './qr-verification.service';
 import { BloodUnit, BloodUnitEntity } from './entities/blood-unit.entity';
 import { BloodStatusHistory } from './entities/blood-status-history.entity';
 import { QrVerificationLogEntity } from './entities/qr-verification-log.entity';
+import { UnitDispositionRecord } from './entities/unit-disposition.entity';
+import { DispositionController } from './controllers/disposition.controller';
+import { DispositionService } from './services/disposition.service';
 
 @Module({
   imports: [
@@ -27,17 +30,25 @@ import { QrVerificationLogEntity } from './entities/qr-verification-log.entity';
       BlockchainEvent,
       QrVerificationLogEntity,
       OrderEntity,
+      UnitDispositionRecord,
     ]),
     SorobanModule,
     NotificationsModule,
     DonorEligibilityModule,
   ],
-  controllers: [BloodUnitsController],
+  controllers: [BloodUnitsController, DispositionController],
   providers: [
     BloodUnitsService,
     BloodStatusService,
     BloodInventoryQueryService,
+    QrVerificationService,
+    DispositionService,
   ],
-  exports: [BloodUnitsService, BloodStatusService, BloodInventoryQueryService],
+  exports: [
+    BloodUnitsService,
+    BloodStatusService,
+    BloodInventoryQueryService,
+    DispositionService,
+  ],
 })
 export class BloodUnitsModule {}
